@@ -1,46 +1,63 @@
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+if target and target.Character and target.Character.PrimaryPart then
+                        local root = target.Character.PrimaryPart
+                        local velocity = root.AssemblyLinearVelocity
+                        local aimPosition = root.Position + (velocity * Vector3.new(PredictionSlider.Value / 200, 0, PredictionSlider.Value / 200))
+                        args[2] = aimPosition
+                    end
+                end
+            end
+        end
+    end
+    return __namecall(self, unpack(args))
+end)
 
-local Window = WindUI:CreateWindow({
-    Title = "My Super Hub ",
-    Icon = "door-open",
-    Author = "by .ftgs and .ftgs",
-    Folder = "MySuperHub",
-    
-    -- ↓ This all is Optional. You can remove it.
-    Size = UDim2.fromOffset(580, 460),
-    Transparent = true,
-    Theme = "Dark",
-    Resizable = true,
-    SideBarWidth = 200,
-    BackgroundImageTransparency = 0.42,
-    HideSearchBar = true,
-    ScrollBarEnabled = false,
-    
-    -- ↓ Optional. You can remove it.
-    User = {
-        Enabled = true,
-        Anonymous = true,
-        Callback = function()
-            print("clicked")
-        end,
-    },
-    
-    KeySystem = { 
-        -- Измененный ключ
-        Key = { "@nexsrcscripts" },
-        
-        Note = "Example Key System.",
-        
-        -- ↓ Optional. You can remove it.
-        Thumbnail = {
-            Image = "rbxassetid://",
-            Title = "Thumbnail",
-        },
-        
-        -- ↓ Optional. You can remove it.
-        URL = "YOUR LINK TO GET KEY (Discord, Linkvertise, Pastebin, etc.)",
-        
-        -- ↓ Optional. You can remove it.
-        SaveKey = false, -- automatically save and load the key.
-    },
-})
+-- Gun highlight system
+local GunHighlight = Instance.new("Highlight")
+GunHighlight.FillColor = GunColor.Value
+GunHighlight.OutlineTransparency = 1
+GunHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+GunHighlight.RobloxLocked = true
+
+local GunHandleAdornment = Instance.new("BoxHandleAdornment")
+GunHandleAdornment.Color3 = GunColor.Value
+GunHandleAdornment.Transparency = 0.2
+GunHandleAdornment.AlwaysOnTop = true
+GunHandleAdornment.AdornCullingMode = Enum.AdornCullingMode.Never
+GunHandleAdornment.RobloxLocked = true
+
+-- Update gun highlight when settings change
+GunColor.Callback = function(color)
+    GunHighlight.FillColor = color
+    GunHandleAdornment.Color3 = color
+end
+
+GunHighlightToggle.Callback = function(state)
+    if state then
+        local gun = Workspace:FindFirstChild("GunDrop")
+        if gun then
+            GunHighlight.Adornee = gun
+            GunHandleAdornment.Adornee = gun
+            GunHighlight.Parent = game:GetService("CoreGui")
+            GunHandleAdornment.Parent = game:GetService("CoreGui")
+        end
+    else
+        GunHighlight.Adornee = nil
+        GunHandleAdornment.Adornee = nil
+    end
+end
+
+-- Initial gun check
+spawn(function()
+    while true do
+        wait(1)
+        if GunHighlightToggle.Value then
+            local gun = Workspace:FindFirstChild("GunDrop")
+            if gun then
+                GunHighlight.Adornee = gun
+                GunHandleAdornment.Adornee = gun
+                GunHighlight.Parent = game:GetService("CoreGui")
+                GunHandleAdornment.Parent = game:GetService("CoreGui")
+            end
+        end
+    end
+end)
