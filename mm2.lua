@@ -20,6 +20,99 @@ Window:Tag({
     Color = Color3.fromHex("#00BFFF")
 })
 
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+
+-- Variables
+local LocalPlayer = Players.LocalPlayer
+local murderer, sheriff, hero
+local roles = {}
+local visuals = {}
+local BoundKeys = LocalPlayer.PlayerScripts.PlayerModule.CameraModule.MouseLockController.BoundKeys
+
+-- Options storage
+local Options = {
+    Murderer_Color = { Value = Color3.fromRGB(255, 0, 0) },
+    Sheriff_Color = { Value = Color3.fromRGB(0, 0, 255) },
+    Hero_Color = { Value = Color3.fromRGB(255, 255, 0) },
+    Innocent_Color = { Value = Color3.fromRGB(0, 255, 0) },
+    Unknown_Color = { Value = Color3.fromRGB(128, 128, 128) }
+}
+
+-- Functions
+local function findAngleDelta(a, b)
+    return math.deg(math.acos(a:Dot(b)))
+end
+
+local function isCharacterValid(character)
+    if character and character:IsA("Model") then
+        local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            local root = character.PrimaryPart or character:FindFirstChild("HumanoidRootPart")
+            if root then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function updateRole(player, role)
+    if role ~= roles[player] then
+        print(player.Name .. " is now " .. role)
+    end
+    roles[player] = role
+    
+    if role == "Murderer" then
+        murderer = player
+    elseif role == "Sheriff" then
+        sheriff = player
+    elseif role == "Hero" then
+        hero = player
+    end
+    
+    if player ~= LocalPlayer then
+        local highlight = visuals[player]
+        if highlight then
+            highlight.FillColor = role == "Murderer" and Options.Murderer_Color.Value or
+                                role == "Sheriff" and Options.Sheriff_Color.Value or
+                                role == "Hero" and Options.Hero_Color.Value or
+                                role == "Innocent" and Options.Innocent_Color.Value or
+                                Options.Unknown_Color.Value
+        end
+    end
+end
+
+local function onPlayerAdded(player)
+    local highlight = Instance.new("Highlight")
+    highlight.FillColor = Options.Unknown_Color.Value
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.RobloxLocked = true
+    visuals[player] = highlight
+    highlight.Parent = CoreGui
+
+    player.CharacterAdded:Connect(function(character)
+        highlight.Adornee = character
+    end)
+    
+    if player.Character then
+        highlight.Adornee = player.Character
+    end
+end
+
+local function onPlayerRemoving(player)
+    local highlight = visuals[player]
+    if highlight then
+        highlight:Destroy()
+    end
+    visuals[player] = nil
+    roles[player] = nil
+end
+
 -- ESP Tab
 local ESPTab = Window:Tab({
     Title = "ESP",
@@ -61,18 +154,6 @@ local ChamsToggle = ESPTab:Toggle({
     end
 })
 
--- Chams Teams
-local ChamsDropdown = ESPTab:Dropdown({
-    Title = "Chams ESP Teams",
-    Values = { "Murderer", "Sheriff", "Innocents" },
-    Value = { "Murderer" },
-    Multi = true,
-    AllowNone = true,
-    Callback = function(option) 
-        print("Chams teams selected: " .. game:GetService("HttpService"):JSONEncode(option)) 
-    end
-})
-
 -- Team Colors
 local MurdererColor = ESPTab:Colorpicker({
     Title = "Цвет маньяка",
@@ -81,6 +162,7 @@ local MurdererColor = ESPTab:Colorpicker({
     Transparency = 0,
     Locked = false,
     Callback = function(color) 
+        Options.Murderer_Color.Value = color
         print("Цвет маньяка: " .. tostring(color))
     end
 })
@@ -92,18 +174,44 @@ local SheriffColor = ESPTab:Colorpicker({
     Transparency = 0,
     Locked = false,
     Callback = function(color) 
+        Options.Sheriff_Color.Value = color
         print("Цвет шерифа: " .. tostring(color))
     end
 })
 
-local InnocentsColor = ESPTab:Colorpicker({
+local HeroColor = ESPTab:Colorpicker({
+    Title = "Цвет героя",
+    Desc = "Цвет для героя",
+    Default = Color3.fromRGB(255, 255, 0),
+    Transparency = 0,
+    Locked = false,
+    Callback = function(color) 
+        Options.Hero_Color.Value = color
+        print("Цвет героя: " .. tostring(color))
+    end
+})
+
+local InnocentColor = ESPTab:Colorpicker({
     Title = "Цвет невинных",
     Desc = "Цвет для невинных игроков",
     Default = Color3.fromRGB(0, 255, 0),
     Transparency = 0,
     Locked = false,
     Callback = function(color) 
+        Options.Innocent_Color.Value = color
         print("Цвет невинных: " .. tostring(color))
+    end
+})
+
+local UnknownColor = ESPTab:Colorpicker({
+    Title = "Цвет неизвестных",
+    Desc = "Цвет для неизвестных игроков",
+    Default = Color3.fromRGB(128, 128, 128),
+    Transparency = 0,
+    Locked = false,
+    Callback = function(color) 
+        Options.Unknown_Color.Value = color
+        print("Цвет неизвестных: " .. tostring(color))
     end
 })
 
@@ -180,126 +288,175 @@ local TargetDropdown = AimbotTab:Dropdown({
     end
 })
 
--- FOV Settings
-local FOVSection = AimbotTab:Section({ 
-    Title = "FOV Settings",
-    TextXAlignment = "Left",
-    TextSize = 17,
-})
-
-local FOVToggle = AimbotTab:Toggle({
-    Title = "Show FOV",
-    Desc = "Показывать поле зрения",
-    Icon = "circle",
-    Type = "Checkbox",
-    Default = true,
-    Callback = function(state) 
-        print("Show FOV: " .. tostring(state))
-    end
-})
-
-local FOVSizeSlider = AimbotTab:Slider({
-    Title = "FOV Size",
-    Default = 80,
-    Min = 10,
-    Max = 300,
-    Callback = function(Value)
-        print("FOV Size:", Value)
-    end
-})
-
-local FOVColor = AimbotTab:Colorpicker({
-    Title = "FOV Color",
-    Desc = "Цвет поля зрения",
-    Default = Color3.fromRGB(255, 255, 255),
-    Transparency = 0,
+-- Legit Tab
+local LegitTab = Window:Tab({
+    Title = "Legit",
+    Icon = "shield",
     Locked = false,
-    Callback = function(color) 
-        print("FOV Color: " .. tostring(color))
+})
+
+-- Hitbox Extender
+local ReachToggle = LegitTab:Toggle({
+    Title = "Hitbox Extender",
+    Desc = "Расширение хитбокса",
+    Icon = "expand",
+    Type = "Checkbox",
+    Default = false,
+    Callback = function(state) 
+        print("Hitbox Extender: " .. tostring(state))
     end
 })
 
--- Gun Highlight Features
-local GunSection = AimbotTab:Section({ 
-    Title = "Gun Features",
-    TextXAlignment = "Left",
-    TextSize = 17,
+local ReachSlider = LegitTab:Slider({
+    Title = "Hitbox Radius",
+    Default = 10,
+    Min = 5,
+    Max = 20,
+    Callback = function(Value)
+        print("Hitbox Radius:", Value)
+    end
 })
 
-local GunHighlightToggle = AimbotTab:Toggle({
-    Title = "Gun Highlight",
-    Desc = "Подсветка оружия на карте",
+local ReachAngleSlider = LegitTab:Slider({
+    Title = "Hitbox Angle",
+    Default = 60,
+    Min = 10,
+    Max = 180,
+    Callback = function(Value)
+        print("Hitbox Angle:", Value)
+    end
+})
+
+-- Kill All
+local StabAllToggle = LegitTab:Toggle({
+    Title = "Kill All",
+    Desc = "Убивать всех вокруг",
+    Icon = "skull",
+    Type = "Checkbox",
+    Default = false,
+    Callback = function(state) 
+        print("Kill All: " .. tostring(state))
+    end
+})
+
+-- Auto Pickup Gun
+local AutoGunToggle = LegitTab:Toggle({
+    Title = "Auto-Pickup Gun",
+    Desc = "Автоподбор оружия",
     Icon = "gift",
     Type = "Checkbox",
-    Default = true,
+    Default = false,
     Callback = function(state) 
-        print("Gun Highlight: " .. tostring(state))
+        print("Auto-Pickup Gun: " .. tostring(state))
     end
 })
 
-local GunColor = AimbotTab:Colorpicker({
-    Title = "Gun Color",
-    Desc = "Цвет подсветки оружия",
-    Default = Color3.fromRGB(255, 215, 0),
-    Transparency = 0,
-    Locked = false,
-    Callback = function(color) 
-        print("Gun Color: " .. tostring(color))
+-- Speed Hack
+local SpeedToggle = LegitTab:Toggle({
+    Title = "Speed Hack",
+    Desc = "Увеличение скорости",
+    Icon = "zap",
+    Type = "Checkbox",
+    Default = false,
+    Callback = function(state) 
+        print("Speed Hack: " .. tostring(state))
+    end
+})
+
+local SpeedSlider = LegitTab:Slider({
+    Title = "Speed",
+    Default = 2,
+    Min = 1,
+    Max = 10,
+    Callback = function(Value)
+        print("Speed:", Value)
     end
 })
 
 -- Initialize role tracking
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local roles = {}
-local murderer, sheriff, hero = nil, nil, nil
-
-local function updateRole(player, role)
-    roles[player] = role
-    if role == "Murderer" then
-        murderer = player
-    elseif role == "Sheriff" then
-        sheriff = player
-    elseif role == "Hero" then
-        hero = player
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        onPlayerAdded(player)
     end
-    print(player.Name .. " role updated to: " .. role)
 end
 
 -- Role detection events
 ReplicatedStorage.Fade.OnClientEvent:Connect(function(data)
-    for i, v in ipairs(Players:GetPlayers()) do
-        local info = data[v.Name]
+    for _, player in ipairs(Players:GetPlayers()) do
+        local info = data[player.Name]
         if info then
             local role = typeof(info) == "table" and info.Role or "Unknown"
-            pcall(updateRole, v, role)
+            pcall(updateRole, player, role)
         end
     end
 end)
 
 ReplicatedStorage.UpdatePlayerData.OnClientEvent:Connect(function(data)
-    for i, v in ipairs(Players:GetPlayers()) do
-        local info = data[v.Name]
+    for _, player in ipairs(Players:GetPlayers()) do
+        local info = data[player.Name]
         if info then
             local role = typeof(info) == "table" and info.Role or "Unknown"
-            pcall(updateRole, v, role)
+            pcall(updateRole, player, role)
         end
     end
 end)
 
-ReplicatedStorage.RoleSelect.OnClientEvent:Connect(function(role, ...)
+ReplicatedStorage.RoleSelect.OnClientEvent:Connect(function(role)
     updateRole(LocalPlayer, role or "Unknown")
 end)
 
 ReplicatedStorage.Remotes.Gameplay.RoundEndFade.OnClientEvent:Connect(function()
-    for i, v in pairs(roles) do
-        updateRole(i, "Unknown")
+    for player in pairs(roles) do
+        updateRole(player, "Unknown")
     end
     murderer, sheriff, hero = nil, nil, nil
 end)
 
--- Silent Aim functionality
+-- Main loop
+RunService.RenderStepped:Connect(function()
+    local character = LocalPlayer.Character
+    if isCharacterValid(character) then
+        -- Hitbox Extender
+        if ReachToggle.Value then
+            local Knife = character:FindFirstChild("Knife")
+            if Knife and Knife:IsA("Tool") then
+                local HumanoidRootPart = character.HumanoidRootPart
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and isCharacterValid(player.Character) then
+                        local EnemyRoot = player.Character.HumanoidRootPart
+                        local EnemyPosition = EnemyRoot.Position
+                        local Distance = (EnemyPosition - HumanoidRootPart.Position).Magnitude
+                        local Angle = findAngleDelta(
+                            HumanoidRootPart.CFrame.LookVector.Unit,
+                            (EnemyPosition - HumanoidRootPart.Position).Unit
+                        )
+                        if StabAllToggle.Value or (Distance <= ReachSlider.Value and Angle <= ReachAngleSlider.Value) then
+                            firetouchinterest(EnemyRoot, Knife.Handle, 1)
+                            firetouchinterest(EnemyRoot, Knife.Handle, 0)
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Speed Hack
+        if SpeedToggle.Value then
+            character.Humanoid.WalkSpeed = 16 + SpeedSlider.Value
+        else
+            character.Humanoid.WalkSpeed = 16
+        end
+
+        -- Auto Pickup Gun
+        if AutoGunToggle.Value and roles[LocalPlayer] == "Innocent" then
+            local gundrop = Workspace:FindFirstChild("GunDrop")
+            if gundrop then
+                character.HumanoidRootPart.CFrame = gundrop.CFrame
+            end
+        end
+    end
+end)
+
+-- Silent Aim hook
 local __namecall
 __namecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
@@ -313,8 +470,6 @@ __namecall = hookmetamethod(game, "__namecall", function(self, ...)
                         target = murderer
                     elseif TargetDropdown.Value == "Sheriff" and sheriff then
                         target = sheriff
-                    elseif TargetDropdown.Value == "Closest" then
-                        -- Closest player logic would go here
                     end
                     
                     if target and target.Character and target.Character.PrimaryPart then
@@ -328,55 +483,4 @@ __namecall = hookmetamethod(game, "__namecall", function(self, ...)
         end
     end
     return __namecall(self, unpack(args))
-end)
-
--- Gun highlight system
-local GunHighlight = Instance.new("Highlight")
-GunHighlight.FillColor = GunColor.Value
-GunHighlight.OutlineTransparency = 1
-GunHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-GunHighlight.RobloxLocked = true
-
-local GunHandleAdornment = Instance.new("BoxHandleAdornment")
-GunHandleAdornment.Color3 = GunColor.Value
-GunHandleAdornment.Transparency = 0.2
-GunHandleAdornment.AlwaysOnTop = true
-GunHandleAdornment.AdornCullingMode = Enum.AdornCullingMode.Never
-GunHandleAdornment.RobloxLocked = true
-
--- Update gun highlight when settings change
-GunColor.Callback = function(color)
-    GunHighlight.FillColor = color
-    GunHandleAdornment.Color3 = color
-end
-
-GunHighlightToggle.Callback = function(state)
-    if state then
-        local gun = Workspace:FindFirstChild("GunDrop")
-        if gun then
-            GunHighlight.Adornee = gun
-            GunHandleAdornment.Adornee = gun
-            GunHighlight.Parent = game:GetService("CoreGui")
-            GunHandleAdornment.Parent = game:GetService("CoreGui")
-        end
-    else
-        GunHighlight.Adornee = nil
-        GunHandleAdornment.Adornee = nil
-    end
-end
-
--- Initial gun check
-spawn(function()
-    while true do
-        wait(1)
-        if GunHighlightToggle.Value then
-            local gun = Workspace:FindFirstChild("GunDrop")
-            if gun then
-                GunHighlight.Adornee = gun
-                GunHandleAdornment.Adornee = gun
-                GunHighlight.Parent = game:GetService("CoreGui")
-                GunHandleAdornment.Parent = game:GetService("CoreGui")
-            end
-        end
-    end
 end)
