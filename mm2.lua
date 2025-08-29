@@ -32,7 +32,6 @@ local LocalPlayer = Players.LocalPlayer
 local murderer, sheriff, hero
 local roles = {}
 local visuals = {}
-local BoundKeys = LocalPlayer.PlayerScripts.PlayerModule.CameraModule.MouseLockController.BoundKeys
 
 -- Options storage
 local Options = {
@@ -380,36 +379,74 @@ for _, player in ipairs(Players:GetPlayers()) do
     end
 end
 
--- Role detection events
-ReplicatedStorage.Fade.OnClientEvent:Connect(function(data)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local info = data[player.Name]
-        if info then
-            local role = typeof(info) == "table" and info.Role or "Unknown"
-            pcall(updateRole, player, role)
+-- Find correct remote events
+local function findRemoteEvent(name)
+    for _, child in ipairs(ReplicatedStorage:GetDescendants()) do
+        if child:IsA("RemoteEvent") and child.Name:lower():find(name:lower()) then
+            return child
         end
     end
-end)
+    return nil
+end
 
-ReplicatedStorage.UpdatePlayerData.OnClientEvent:Connect(function(data)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local info = data[player.Name]
-        if info then
-            local role = typeof(info) == "table" and info.Role or "Unknown"
-            pcall(updateRole, player, role)
+local function findRemoteFunction(name)
+    for _, child in ipairs(ReplicatedStorage:GetDescendants()) do
+        if child:IsA("RemoteFunction") and child.Name:lower():find(name:lower()) then
+            return child
         end
     end
-end)
+    return nil
+end
 
-ReplicatedStorage.RoleSelect.OnClientEvent:Connect(function(role)
-    updateRole(LocalPlayer, role or "Unknown")
-end)
+-- Try to find role-related remotes
+local roleSelectEvent = findRemoteEvent("RoleSelect") or findRemoteEvent("Select")
+local roundEndEvent = findRemoteEvent("RoundEnd") or findRemoteEvent("End")
+local updateDataEvent = findRemoteEvent("UpdatePlayerData") or findRemoteEvent("PlayerData")
 
-ReplicatedStorage.Remotes.Gameplay.RoundEndFade.OnClientEvent:Connect(function()
-    for player in pairs(roles) do
-        updateRole(player, "Unknown")
+-- Role detection
+if roleSelectEvent then
+    roleSelectEvent.OnClientEvent:Connect(function(role)
+        updateRole(LocalPlayer, role or "Unknown")
+    end)
+end
+
+if roundEndEvent then
+    roundEndEvent.OnClientEvent:Connect(function()
+        for player in pairs(roles) do
+            updateRole(player, "Unknown")
+        end
+        murderer, sheriff, hero = nil, nil, nil
+    end)
+end
+
+if updateDataEvent then
+    updateDataEvent.OnClientEvent:Connect(function(data)
+        for _, player in ipairs(Players:GetPlayers()) do
+            local info = data[player.Name]
+            if info then
+                local role = typeof(info) == "table" and info.Role or "Unknown"
+                pcall(updateRole, player, role)
+            end
+        end
+    end)
+end
+
+-- Manual role detection fallback
+spawn(function()
+    while true do
+        wait(5)
+        -- Try to detect roles by character items
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local char = player.Character
+                if char:FindFirstChild("Knife") then
+                    updateRole(player, "Murderer")
+                elseif char:FindFirstChild("Gun") then
+                    updateRole(player, "Sheriff")
+                end
+            end
+        end
     end
-    murderer, sheriff, hero = nil, nil, nil
 end)
 
 -- Main loop
@@ -447,7 +484,7 @@ RunService.RenderStepped:Connect(function()
         end
 
         -- Auto Pickup Gun
-        if AutoGunToggle.Value and roles[LocalPlayer] == "Innocent" then
+        if AutoGunToggle.Value then
             local gundrop = Workspace:FindFirstChild("GunDrop")
             if gundrop then
                 character.HumanoidRootPart.CFrame = gundrop.CFrame
@@ -463,7 +500,7 @@ __namecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = { ... }
     if not checkcaller() then
         if typeof(self) == "Instance" then
-            if self.Name == "ShootGun" and method == "InvokeServer" then
+            if (self.Name == "ShootGun" or self.Name:find("Shoot")) and method == "InvokeServer" then
                 if SilentAimToggle.Value then
                     local target = nil
                     if TargetDropdown.Value == "Murderer" and murderer then
